@@ -1,0 +1,12 @@
+{
+  "name": "lymbase",
+  "version": "1.0.0",
+  "main": "api/database.js",
+  "scripts": {
+    "start": "node api/database.js"
+  },
+  "dependencies": {
+    "sqlite3": "^5.1.6",
+    "sqlite": "^4.2.1"
+  }
+}
