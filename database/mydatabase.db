@@ -1,0 +1,59 @@
+import sqlite3 from 'sqlite3';
+import { open } from 'sqlite';
+
+export default async function handler(req, res) {
+  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+
+  const { action, path, data, where } = req.body;
+  if (!path) return res.status(400).json({ error: 'Path (table) is required' });
+
+  const db = await open({ filename: './mydatabase.db', driver: sqlite3.Database });
+
+  try {
+    if (action === 'set') {
+      // Auto-create table if not exists
+      await db.run(`CREATE TABLE IF NOT EXISTS ${path} (id INTEGER PRIMARY KEY AUTOINCREMENT, data TEXT)`);
+      await db.run(`INSERT INTO ${path} (data) VALUES (?)`, JSON.stringify(data));
+      return res.json({ message: 'Data saved' });
+    }
+
+    if (action === 'get') {
+      // Check table exists
+      const table = await db.get(`SELECT name FROM sqlite_master WHERE type='table' AND name='${path}'`);
+      if (!table) throw new Error(`Table '${path}' does not exist`);
+      const rows = await db.all(`SELECT id, data FROM ${path}`);
+      return res.json({ data: rows.map(r => ({ id: r.id, ...JSON.parse(r.data) })) });
+    }
+
+    if (action === 'update') {
+      if (!where) throw new Error('WHERE condition is required for update');
+      const table = await db.get(`SELECT name FROM sqlite_master WHERE type='table' AND name='${path}'`);
+      if (!table) throw new Error(`Table '${path}' does not exist`);
+
+      const row = await db.get(`SELECT * FROM ${path} WHERE ${where}`);
+      if (row) {
+        const existingData = JSON.parse(row.data);
+        const updatedData = { ...existingData, ...data };
+        await db.run(`UPDATE ${path} SET data = ? WHERE ${where}`, JSON.stringify(updatedData));
+        return res.json({ message: 'Data updated' });
+      } else {
+        await db.run(`INSERT INTO ${path} (data) VALUES (?)`, JSON.stringify(data));
+        return res.json({ message: 'Row not found, new row added' });
+      }
+    }
+
+    if (action === 'remove') {
+      if (!where) throw new Error('WHERE condition is required for remove');
+      const table = await db.get(`SELECT name FROM sqlite_master WHERE type='table' AND name='${path}'`);
+      if (!table) throw new Error(`Table '${path}' does not exist`);
+      await db.run(`DELETE FROM ${path} WHERE ${where}`);
+      return res.json({ message: 'Data deleted' });
+    }
+
+    return res.status(400).json({ error: 'Invalid action' });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  } finally {
+    await db.close();
+  }
+}
